@@ -2,7 +2,6 @@
 
 namespace Illuminate\Tests\Testing;
 
-use Exception;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\CookieValuePrefix;
@@ -623,90 +622,6 @@ class TestResponseTest extends TestCase
         $response->assertStatus($expectedStatusCode);
     }
 
-    public function testAssertStatusShowsExceptionOnUnexpected500()
-    {
-        $statusCode = 500;
-        $expectedStatusCode = 200;
-
-        $this->expectException(AssertionFailedError::class);
-
-        $this->expectExceptionMessage('Test exception message');
-
-        $baseResponse = tap(new Response, function ($response) use ($statusCode) {
-            $response->setStatusCode($statusCode);
-        });
-        $exceptions = collect([new Exception('Test exception message')]);
-
-        $response = TestResponse::fromBaseResponse($baseResponse)
-            ->withExceptions($exceptions);
-        $response->assertStatus($expectedStatusCode);
-    }
-
-    public function testAssertStatusShowsErrorsOnUnexpectedErrorRedirect()
-    {
-        $statusCode = 302;
-        $expectedStatusCode = 200;
-
-        $this->expectException(AssertionFailedError::class);
-
-        $this->expectExceptionMessage('The first name field is required.');
-
-        $baseResponse = tap(new RedirectResponse('/', $statusCode), function ($response) {
-            $response->setSession(new Store('test-session', new ArraySessionHandler(1)));
-            $response->withErrors([
-                'first_name' => 'The first name field is required.',
-                'last_name' => 'The last name field is required.',
-            ]);
-        });
-
-        $response = TestResponse::fromBaseResponse($baseResponse);
-        $response->assertStatus($expectedStatusCode);
-    }
-
-    public function testAssertStatusShowsJsonErrorsOnUnexpected422()
-    {
-        $statusCode = 422;
-        $expectedStatusCode = 200;
-
-        $this->expectException(AssertionFailedError::class);
-
-        $this->expectExceptionMessage('"The first name field is required."');
-
-        $baseResponse = new Response(
-            [
-                'message' => 'The given data was invalid.',
-                'errors' => [
-                    'first_name' => 'The first name field is required.',
-                    'last_name' => 'The last name field is required.',
-                ],
-            ],
-            $statusCode
-        );
-
-        $response = TestResponse::fromBaseResponse($baseResponse);
-        $response->assertStatus($expectedStatusCode);
-    }
-
-    public function testAssertStatusWhenJsonIsFalse()
-    {
-        $baseResponse = new Response('false', 200, ['Content-Type' => 'application/json']);
-
-        $response = TestResponse::fromBaseResponse($baseResponse);
-        $response->assertStatus(200);
-    }
-
-    public function testAssertStatusWhenJsonIsEncoded()
-    {
-        $baseResponse = tap(new Response, function ($response) {
-            $response->header('Content-Type', 'application/json');
-            $response->header('Content-Encoding', 'gzip');
-            $response->setContent('b"x£½V*.I,)-V▓R╩¤V¬\x05\x00+ü\x059"');
-        });
-
-        $response = TestResponse::fromBaseResponse($baseResponse);
-        $response->assertStatus(200);
-    }
-
     public function testAssertHeader()
     {
         $this->expectException(AssertionFailedError::class);
@@ -946,6 +861,16 @@ class TestResponseTest extends TestCase
         $this->expectException(AssertionFailedError::class);
 
         $response = TestResponse::fromBaseResponse(new Response(new JsonSerializableSingleResourceWithIntegersStub));
+
+        $response->assertJsonFragment(['id' => 1]);
+    }
+
+    public function testAssertJsonFragmentUnicodeCanFail()
+    {
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessageMatches('/Привет|Мир/');
+
+        $response = TestResponse::fromBaseResponse(new Response(new JsonSerializableSingleResourceWithUnicodeStub));
 
         $response->assertJsonFragment(['id' => 1]);
     }
@@ -1651,9 +1576,6 @@ class TestResponseTest extends TestCase
         );
     }
 
-    /**
-     * @group 1
-     */
     public function testResponseCanBeReturnedAsCollection()
     {
         $response = TestResponse::fromBaseResponse(new Response(new JsonSerializableMixedResourcesStub));
@@ -2035,6 +1957,18 @@ class JsonSerializableSingleResourceWithIntegersStub implements JsonSerializable
             ['id' => 10, 'foo' => 'bar'],
             ['id' => 20, 'foo' => 'bar'],
             ['id' => 30, 'foo' => 'bar'],
+        ];
+    }
+}
+
+class JsonSerializableSingleResourceWithUnicodeStub implements JsonSerializable
+{
+    public function jsonSerialize(): array
+    {
+        return [
+            ['id' => 10, 'foo' => 'bar'],
+            ['id' => 20, 'foo' => 'Привет'],
+            ['id' => 30, 'foo' => 'Мир'],
         ];
     }
 }

@@ -16,12 +16,14 @@ use Illuminate\Support\LazyCollection;
 use Illuminate\Support\MultipleItemsFoundException;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use IteratorAggregate;
 use JsonSerializable;
 use Mockery as m;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use stdClass;
 use Symfony\Component\VarDumper\VarDumper;
+use Traversable;
 use UnexpectedValueException;
 
 if (PHP_VERSION_ID >= 80100) {
@@ -621,6 +623,11 @@ class SupportCollectionTest extends TestCase
         $items = new TestJsonSerializeWithScalarValueObject;
         $array = $method->invokeArgs($data, [$items]);
         $this->assertSame(['foo'], $array);
+
+        $subject = [new stdClass, new stdClass];
+        $items = new TestTraversableAndJsonSerializableObject($subject);
+        $array = $method->invokeArgs($data, [$items]);
+        $this->assertSame($subject, $array);
 
         $items = new $collection(['foo' => 'bar']);
         $array = $method->invokeArgs($data, [$items]);
@@ -1982,6 +1989,16 @@ class SupportCollectionTest extends TestCase
         });
 
         $this->assertEquals([1 => 'dayle', 0 => 'taylor'], $data->all());
+
+        $data = new $collection(['a' => ['sort' => 2], 'b' => ['sort' => 1]]);
+        $data = $data->sortBy([['sort', 'asc']]);
+
+        $this->assertEquals(['b' => ['sort' => 1], 'a' => ['sort' => 2]], $data->all());
+
+        $data = new $collection([['sort' => 2], ['sort' => 1]]);
+        $data = $data->sortBy([['sort', 'asc']]);
+
+        $this->assertEquals([1 => ['sort' => 1], 0 => ['sort' => 2]], $data->all());
     }
 
     /**
@@ -5579,6 +5596,26 @@ class TestJsonSerializeWithScalarValueObject implements JsonSerializable
     public function jsonSerialize(): string
     {
         return 'foo';
+    }
+}
+
+class TestTraversableAndJsonSerializableObject implements IteratorAggregate, JsonSerializable
+{
+    public $items;
+
+    public function __construct($items)
+    {
+        $this->items = $items;
+    }
+
+    public function getIterator(): Traversable
+    {
+        return new ArrayIterator($this->items);
+    }
+
+    public function jsonSerialize(): array
+    {
+        return json_decode(json_encode($this->items), true);
     }
 }
 

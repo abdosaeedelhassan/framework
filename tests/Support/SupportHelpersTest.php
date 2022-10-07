@@ -4,10 +4,13 @@ namespace Illuminate\Tests\Support;
 
 use ArrayAccess;
 use ArrayIterator;
+use Countable;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Env;
 use Illuminate\Support\Optional;
 use Illuminate\Support\Stringable;
+use Illuminate\Tests\Support\Fixtures\IntBackedEnum;
+use Illuminate\Tests\Support\Fixtures\StringBackedEnum;
 use IteratorAggregate;
 use LogicException;
 use Mockery as m;
@@ -28,15 +31,58 @@ class SupportHelpersTest extends TestCase
     {
         $str = 'A \'quote\' is <b>bold</b>';
         $this->assertSame('A &#039;quote&#039; is &lt;b&gt;bold&lt;/b&gt;', e($str));
+
         $html = m::mock(Htmlable::class);
         $html->shouldReceive('toHtml')->andReturn($str);
         $this->assertEquals($str, e($html));
+    }
+
+    /**
+     * @requires PHP >= 8.1
+     */
+    public function testEWithEnums()
+    {
+        $enumValue = StringBackedEnum::ADMIN_LABEL;
+        $this->assertSame('I am &#039;admin&#039;', e($enumValue));
+
+        $enumValue = IntBackedEnum::ROLE_ADMIN;
+        $this->assertSame('1', e($enumValue));
+    }
+
+    public function testBlank()
+    {
+        $this->assertTrue(blank(null));
+        $this->assertTrue(blank(''));
+        $this->assertTrue(blank('  '));
+        $this->assertFalse(blank(10));
+        $this->assertFalse(blank(true));
+        $this->assertFalse(blank(false));
+        $this->assertFalse(blank(0));
+        $this->assertFalse(blank(0.0));
+
+        $object = new SupportTestCountable();
+        $this->assertTrue(blank($object));
     }
 
     public function testClassBasename()
     {
         $this->assertSame('Baz', class_basename('Foo\Bar\Baz'));
         $this->assertSame('Baz', class_basename('Baz'));
+    }
+
+    public function testFilled()
+    {
+        $this->assertFalse(filled(null));
+        $this->assertFalse(filled(''));
+        $this->assertFalse(filled('  '));
+        $this->assertTrue(filled(10));
+        $this->assertTrue(filled(true));
+        $this->assertTrue(filled(false));
+        $this->assertTrue(filled(0));
+        $this->assertTrue(filled(0.0));
+
+        $object = new SupportTestCountable();
+        $this->assertFalse(filled($object));
     }
 
     public function testValue()
@@ -57,6 +103,27 @@ class SupportHelpersTest extends TestCase
         $class->name->first = 'Taylor';
 
         $this->assertSame('Taylor', object_get($class, 'name.first'));
+        $this->assertSame('Taylor', object_get($class, 'name.first', 'default'));
+    }
+
+    public function testObjectGetDefaultValue()
+    {
+        $class = new stdClass;
+        $class->name = new stdClass;
+        $class->name->first = 'Taylor';
+
+        $this->assertSame('default', object_get($class, 'name.family', 'default'));
+        $this->assertNull(object_get($class, 'name.family'));
+    }
+
+    public function testObjectGetWhenKeyIsNullOrEmpty()
+    {
+        $object = new stdClass;
+
+        $this->assertEquals($object, object_get($object, null));
+        $this->assertEquals($object, object_get($object, false));
+        $this->assertEquals($object, object_get($object, ''));
+        $this->assertEquals($object, object_get($object, '  '));
     }
 
     public function testDataGet()
@@ -585,7 +652,7 @@ class SupportHelpersTest extends TestCase
         $this->assertEquals(2, $attempts);
 
         // Make sure we waited 100ms for the first attempt
-        $this->assertEqualsWithDelta(0.1, microtime(true) - $startTime, 0.02);
+        $this->assertEqualsWithDelta(0.1, microtime(true) - $startTime, 0.03);
     }
 
     public function testRetryWithPassingSleepCallback()
@@ -608,7 +675,7 @@ class SupportHelpersTest extends TestCase
         $this->assertEquals(3, $attempts);
 
         // Make sure we waited 300ms for the first two attempts
-        $this->assertEqualsWithDelta(0.3, microtime(true) - $startTime, 0.02);
+        $this->assertEqualsWithDelta(0.3, microtime(true) - $startTime, 0.03);
     }
 
     public function testRetryWithPassingWhenCallback()
@@ -629,7 +696,7 @@ class SupportHelpersTest extends TestCase
         $this->assertEquals(2, $attempts);
 
         // Make sure we waited 100ms for the first attempt
-        $this->assertEqualsWithDelta(0.1, microtime(true) - $startTime, 0.02);
+        $this->assertEqualsWithDelta(0.1, microtime(true) - $startTime, 0.03);
     }
 
     public function testRetryWithFailingWhenCallback()
@@ -661,7 +728,7 @@ class SupportHelpersTest extends TestCase
         // Make sure we made four attempts
         $this->assertEquals(4, $attempts);
 
-        $this->assertEqualsWithDelta(0.05 + 0.1 + 0.2, microtime(true) - $startTime, 0.02);
+        $this->assertEqualsWithDelta(0.05 + 0.1 + 0.2, microtime(true) - $startTime, 0.05);
     }
 
     public function testTransform()
@@ -880,5 +947,13 @@ class SupportTestArrayIterable implements IteratorAggregate
     public function getIterator(): Traversable
     {
         return new ArrayIterator($this->items);
+    }
+}
+
+class SupportTestCountable implements Countable
+{
+    public function count(): int
+    {
+        return 0;
     }
 }
